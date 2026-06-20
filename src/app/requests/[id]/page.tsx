@@ -1,3 +1,4 @@
+import { format } from "date-fns";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -37,9 +38,8 @@ export default async function RequestStatusPage({
       </p>
 
       <p className="text-xs text-neutral-600">
-        {request.apartment.name} •{" "}
-        {request.checkIn.toISOString().slice(0, 10)} –{" "}
-        {request.checkOut.toISOString().slice(0, 10)}
+        {request.apartment.name} • Check-in: {format(request.checkIn, "dd/MM/yyyy")} – Check-out:{" "}
+        {format(request.checkOut, "dd/MM/yyyy")}
       </p>
 
       <p className="text-sm text-neutral-500">

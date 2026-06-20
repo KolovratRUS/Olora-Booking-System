@@ -1,247 +1,39 @@
 import { BookingRequestStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
-import { canTransition } from "@/lib/services/bookingService";
+import Link from "next/link";
+import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
-async function fetchRequests(status: BookingRequestStatus) {
-  return prisma.bookingRequest.findMany({
-    where: { status },
-    include: {
-      apartment: true,
-      guest: true,
-      offers: { orderBy: { createdAt: "desc" }, take: 1 },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-}
-
-async function approveRequest(requestId: string, note: string) {
-  const request = await prisma.bookingRequest.findUnique({ where: { id: requestId } });
-  if (!request) {
-    return;
-  }
-  if (!canTransition(request.status, "guest_accepted")) {
-    console.error("Disallowed transition", { requestId, from: request.status, to: "guest_accepted" });
-    return;
-  }
-
-  const [updated] = await prisma.$transaction([
-    prisma.bookingRequest.update({
-      where: { id: requestId },
-      data: { status: "guest_accepted" },
-    }),
-    prisma.statusHistory.create({
-      data: {
-        entityType: "BookingRequest",
-        entityId: requestId,
-        fromStatus: request.status,
-        toStatus: "guest_accepted",
-        note,
-        changedBy: "admin",
-      },
-    }),
-  ]);
-  revalidatePath("/admin");
-  return updated;
-}
-
-async function declineRequest(requestId: string, note: string) {
-  const request = await prisma.bookingRequest.findUnique({ where: { id: requestId } });
-  if (!request) {
-    return;
-  }
-  if (!canTransition(request.status, "declined")) {
-    console.error("Disallowed transition", { requestId, from: request.status, to: "declined" });
-    return;
-  }
-
-  const [updated] = await prisma.$transaction([
-    prisma.bookingRequest.update({
-      where: { id: requestId },
-      data: { status: "declined" },
-    }),
-    prisma.statusHistory.create({
-      data: {
-        entityType: "BookingRequest",
-        entityId: requestId,
-        fromStatus: request.status,
-        toStatus: "declined",
-        note,
-        changedBy: "admin",
-      },
-    }),
-  ]);
-  revalidatePath("/admin");
-  return updated;
-}
-
-async function offerAlternative(requestId: string, note: string) {
-  const request = await prisma.bookingRequest.findUnique({ where: { id: requestId } });
-  if (!request) {
-    return;
-  }
-  if (!canTransition(request.status, "alternative_offered")) {
-    console.error("Disallowed transition", { requestId, from: request.status, to: "alternative_offered" });
-    return;
-  }
-
-  const [updated] = await prisma.$transaction([
-    prisma.bookingRequest.update({
-      where: { id: requestId },
-      data: { status: "alternative_offered" },
-    }),
-    prisma.statusHistory.create({
-      data: {
-        entityType: "BookingRequest",
-        entityId: requestId,
-        fromStatus: request.status,
-        toStatus: "alternative_offered",
-        note,
-        changedBy: "admin",
-      },
-    }),
-  ]);
-  revalidatePath("/admin");
-  return updated;
-}
-
-async function transitionAction(formData: FormData) {
-  "use server";
-  const requestId = String(formData.get("requestId") || "");
-  const action = String(formData.get("action") || "");
-  const note = String(formData.get("note") || "");
-
-  if (!requestId) {
-    return;
-  }
-
-  switch (action) {
-    case "approve":
-      await approveRequest(requestId, note);
-      break;
-    case "decline":
-      await declineRequest(requestId, note);
-      break;
-    case "alternative_offered":
-      await offerAlternative(requestId, note);
-      break;
-    default:
-      console.error("Unknown action", { requestId, action });
-  }
-}
-
-type Request = {
-  id: string;
-  reference: string;
-  status: BookingRequestStatus;
-  checkIn: Date;
-  checkOut: Date;
-  numberOfGuests: number;
-  apartment: { name: string };
-  guest: { firstName: string; lastName: string; email?: string };
-  offers: Array<{ id: string; status: string; totalCents: number; expiresAt: Date }>;
-};
-
-function PendingRequestQueue({ requests, action }: { requests: Request[]; action: (formData: FormData) => Promise<void> }) {
-  return (
-    <article className="space-y-4 rounded-lg border border-dashed border-gray-300 p-4">
-      <h2 className="text-xl font-semibold">Pending review</h2>
-      {requests.length === 0 && <p className="text-sm text-neutral-500">No pending requests for manual triage.</p>}
-      <div className="space-y-3">
-        {requests.map((request) => (
-          <form key={request.id} action={action} className="flex flex-col gap-3 rounded border bg-white/80 p-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-neutral-900">{request.apartment.name}</span>
-              <span className="text-sm text-neutral-600">
-                {request.guest.firstName} {request.guest.lastName} •{request.guest.email ?? ""}
-              </span>
-              <span className="text-xs text-neutral-500">
-                {request.checkIn.toISOString().slice(0, 10)} → {request.checkOut.toISOString().slice(0, 10)} • {request.numberOfGuests} guest(s)
-              </span>
-              <span className="text-xs text-neutral-500">{request.reference}</span>
-            </div>
-            <input name="requestId" type="hidden" value={request.id} />
-            <input name="note" className="rounded border px-2 py-1 text-sm" placeholder="Admin note" />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                name="action"
-                value="approve"
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                Approve
-              </button>
-              <button
-                type="submit"
-                name="action"
-                value="alternative_offered"
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Alternative offer
-              </button>
-              <button
-                type="submit"
-                name="action"
-                value="decline"
-                className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-              >
-                Decline
-              </button>
-            </div>
-          </form>
-        ))}
-      </div>
-    </article>
-  );
-}
-
-function AcceptedRequestQueue({ requests, action }: { requests: Request[]; action: (formData: FormData) => Promise<void> }) {
-  return (
-    <article className="space-y-4 rounded-lg border border-dashed border-gray-300 p-4">
-      <h2 className="text-xl font-semibold">Awaiting payment confirmation</h2>
-      {requests.length === 0 && <p className="text-sm text-neutral-500">No accepted requests awaiting payment.</p>}
-      <div className="space-y-3">
-        {requests.map((request) => (
-          <form key={request.id} action={action} className="flex flex-col gap-3 rounded border bg-white/80 p-4">
-            <div className="flex flex-col gap-1">
-              <span className="text-sm font-semibold text-neutral-900">{request.apartment.name}</span>
-              <span className="text-xs text-neutral-500">
-                {request.checkIn.toISOString().slice(0, 10)} → {request.checkOut.toISOString().slice(0, 10)} • {request.numberOfGuests} guest(s)
-              </span>
-              <span className="text-xs text-neutral-500">{request.reference}</span>
-            </div>
-            <input name="requestId" type="hidden" value={request.id} />
-            <input name="note" className="rounded border px-2 py-1 text-sm" placeholder="Admin note" />
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="submit"
-                name="action"
-                value="approve"
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-              >
-                Confirm payment
-              </button>
-              <button
-                type="submit"
-                name="action"
-                value="decline"
-                className="rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
-              >
-                Decline
-              </button>
-            </div>
-          </form>
-        ))}
-      </div>
-    </article>
-  );
-}
+const STATUS_GROUPS: { status: BookingRequestStatus; label: string }[] = [
+  { status: "pending_review", label: "Pending review" },
+  { status: "alternative_offered", label: "Alternative offered" },
+  { status: "guest_countered", label: "Guest countered" },
+  { status: "guest_accepted", label: "Guest accepted" },
+  { status: "awaiting_payment", label: "Awaiting payment" },
+  { status: "confirmed", label: "Confirmed" },
+  { status: "declined", label: "Declined" },
+  { status: "expired", label: "Expired" },
+  { status: "cancelled", label: "Cancelled" },
+];
 
 export default async function AdminPage() {
-  const pendingRequests = await fetchRequests("pending_review");
-  const acceptedRequests = await fetchRequests("guest_accepted");
+  const groups = await Promise.all(
+    STATUS_GROUPS.map(async ({ status, label }) => {
+      const requests = await prisma.bookingRequest.findMany({
+        where: { status },
+        orderBy: { createdAt: "desc" },
+        include: {
+          guest: true,
+          apartment: true,
+        },
+      });
+      return { status, label, requests };
+    })
+  );
+
+  const populated = groups.filter((group) => group.requests.length > 0);
+
   return (
     <section className="mx-auto max-w-6xl space-y-8 p-6">
       <header className="space-y-1">
@@ -250,10 +42,59 @@ export default async function AdminPage() {
           Review requests, approve alternatives, and oversee direct booking workflow statuses.
         </p>
       </header>
-      <section className="grid gap-6 md:grid-cols-2">
-        <PendingRequestQueue requests={pendingRequests} action={transitionAction} />
-        <AcceptedRequestQueue requests={acceptedRequests} action={transitionAction} />
-      </section>
+
+      {populated.length === 0 && (
+        <p className="text-neutral-600">No booking requests yet.</p>
+      )}
+
+      <div className="space-y-12">
+        {populated.map(({ status, label, requests }) => (
+          <section key={status} className="space-y-4">
+            <h2 className="text-xl font-semibold">{label}</h2>
+            {requests.length === 0 ? (
+              <p className="text-sm text-neutral-500">No {label.toLowerCase()} requests.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-neutral-200">
+                  <thead>
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Reference</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Apartment</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Guest</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Dates</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Guests</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-neutral-500 uppercase">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 bg-white/80">
+                    {requests.map((request) => (
+                      <tr key={request.id} className="hover:bg-neutral-50">
+                        <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-900">
+                          <Link href={`/admin/requests/${request.id}`} className="underline">
+                            {request.reference}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-3 text-sm text-neutral-900">{request.apartment.name}</td>
+                        <td className="px-3 py-3 text-sm text-neutral-900">
+                          {request.guest.firstName} {request.guest.lastName}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-600">
+                          <div>Check-in: {format(request.checkIn, "dd/MM/yyyy")}</div>
+                          <div>Check-out: {format(request.checkOut, "dd/MM/yyyy")}</div>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-600">{request.numberOfGuests}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-600">
+                          {format(request.createdAt, "yyyy-MM-dd")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
     </section>
   );
 }

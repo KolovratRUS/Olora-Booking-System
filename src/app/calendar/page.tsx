@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,12 @@ export default async function CalendarPage() {
         {blocks.map((block) => (
           <div key={block.id} className="rounded border bg-white/80 p-3 text-sm">
             <span className="font-semibold">{block.apartment.name}</span>
-            <span className="ml-2 text-neutral-600">
-              {block.blockStart.toISOString().slice(0, 10)} - {block.blockEnd.toISOString().slice(0, 10)} • {block.source}
-            </span>
+            <div className="mt-1 text-neutral-600">
+              Check-in: {format(block.blockStart, "dd/MM/yyyy")}
+              <br />
+              Check-out: {format(block.blockEnd, "dd/MM/yyyy")}
+              <span> • {block.source}</span>
+            </div>
           </div>
         ))}
       </div>

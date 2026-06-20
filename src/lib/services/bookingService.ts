@@ -75,3 +75,20 @@ export const allowedTransitions: Record<string, string[]> = {
 export function canTransition(from: string, to: string): boolean {
   return allowedTransitions[from]?.includes(to) ?? false;
 }
+
+export type VisibleAction =
+  | { type: "move_to_awaiting_payment" }
+  | { type: "confirm_payment" }
+  | { type: "alternative_offer" }
+  | { type: "decline" }
+  | { type: "cancel" };
+
+export function getVisibleActions(status: string): VisibleAction[] {
+  const actions: VisibleAction[] = [];
+  if (canTransition(status, "awaiting_payment")) actions.push({ type: "move_to_awaiting_payment" });
+  if (canTransition(status, "confirmed")) actions.push({ type: "confirm_payment" });
+  if (canTransition(status, "alternative_offered")) actions.push({ type: "alternative_offer" });
+  if (canTransition(status, "declined")) actions.push({ type: "decline" });
+  if (canTransition(status, "cancelled")) actions.push({ type: "cancel" });
+  return actions;
+}
