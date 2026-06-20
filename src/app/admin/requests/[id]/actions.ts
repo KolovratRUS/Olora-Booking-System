@@ -10,6 +10,34 @@ import {
 } from "@/lib/services/bookingService";
 import { revalidatePath } from "next/cache";
 
+export type AdminActionState =
+  | { status: "idle" }
+  | { status: "success" }
+  | { status: "error"; message: string };
+
+class OfferBusinessRuleError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "OfferBusinessRuleError";
+  }
+}
+
+const businessRule = (code: string, message: string) =>
+  new OfferBusinessRuleError(code, message);
+
+const adminError = (message: string): AdminActionState => ({ status: "error", message });
+
+const BUSINESS_RULE_MESSAGES: Record<string, string> = {
+  booking_request_missing: "Booking request not found.",
+  transition_invalid: "This booking request can no longer receive an alternative offer.",
+  airbnb_unchecked: "Check Airbnb availability before creating an alternative offer.",
+  apartment_unavailable: "The selected apartment is not available.",
+  check_out_before_check_in: "Check-out must be after check-in.",
+  guest_count_exceeds_capacity: "This apartment cannot accommodate that many guests.",
+  availability_block_conflict: "These dates conflict with an existing availability block.",
+  overlapping_offer: "These dates overlap another active offer.",
+};
+
 export async function declineRequest(requestId: string, reason: string) {
   const request = await prisma.bookingRequest.findUnique({ where: { id: requestId } });
   if (!request) throw new Error("Booking request not found");
@@ -235,27 +263,39 @@ export async function createAlternativeOffer({
     where: { id: requestId },
     include: { apartment: true },
   });
-  if (!request) throw new Error("Booking request not found");
+  if (!request) throw businessRule("booking_request_missing", "Booking request not found.");
 
   if (!canTransition(request.status, "alternative_offered")) {
-    throw new Error(`Cannot create alternative offer from status ${request.status}`);
+    throw businessRule(
+      "transition_invalid",
+      "This booking request can no longer receive an alternative offer.",
+    );
   }
 
   if (!["checked", "blocked"].includes(request.airbnbSyncStatus)) {
-    throw new Error("Airbnb availability must be checked before creating an alternative offer");
+    throw businessRule(
+      "airbnb_unchecked",
+      "Check Airbnb availability before creating an alternative offer.",
+    );
   }
 
   const apartment = await prisma.apartment.findUnique({ where: { id: apartmentId } });
   if (!apartment || !apartment.isActive) {
-    throw new Error("Selected apartment is not available");
+    throw businessRule("apartment_unavailable", "The selected apartment is not available.");
   }
 
   if (checkOut <= checkIn) {
-    throw new Error("Check-out must be after check-in");
+    throw businessRule(
+      "check_out_before_check_in",
+      "Check-out must be after check-in.",
+    );
   }
 
   if (guestCountExceedsCapacity(apartmentId, numberOfGuests, apartment.maximumGuests)) {
-    throw new Error(`Apartment capacity is ${apartment.maximumGuests} guests`);
+    throw businessRule(
+      "guest_count_exceeds_capacity",
+      "This apartment cannot accommodate that many guests.",
+    );
   }
 
   const pricing = calculatePrice({
@@ -287,7 +327,10 @@ export async function createAlternativeOffer({
     overlaps(block.blockStart, block.blockEnd, checkIn, checkOut)
   );
   if (conflict) {
-    throw new Error("Selected dates conflict with existing availability block");
+    throw businessRule(
+      "availability_block_conflict",
+      "These dates conflict with an existing availability block.",
+    );
   }
 
   const overlappingOffer = await prisma.bookingOffer.findFirst({
@@ -300,7 +343,10 @@ export async function createAlternativeOffer({
     },
   });
   if (overlappingOffer) {
-    throw new Error("Selected dates overlap with an existing offer");
+    throw businessRule(
+      "overlapping_offer",
+      "These dates overlap another active offer.",
+    );
   }
 
   const overlappingRequest = await prisma.bookingRequest.findFirst({
@@ -315,7 +361,10 @@ export async function createAlternativeOffer({
     },
   });
   if (overlappingRequest) {
-    throw new Error("Selected dates are already occupied by another request");
+    throw businessRule(
+      "overlapping_offer",
+      "These dates overlap another active offer.",
+    );
   }
 
   const created = await prisma.$transaction(
@@ -494,7 +543,10 @@ export async function confirmPaymentFormAction(form: FormData) {
   await approveIntoConfirmed(requestId, note);
 }
 
-export async function createAlternativeOfferFormAction(form: FormData) {
+export async function createAlternativeOfferFormAction(
+  prevState: AdminActionState,
+  form: FormData,
+): Promise<AdminActionState> {
   const requestId = form.get("requestId");
   const apartmentId = form.get("apartmentId");
   const checkInRaw = form.get("checkIn");
@@ -506,51 +558,76 @@ export async function createAlternativeOfferFormAction(form: FormData) {
   const adminMessageRaw = form.get("adminMessage");
 
   if (
-    typeof requestId !== "string" ||
-    typeof apartmentId !== "string" ||
-    typeof checkInRaw !== "string" ||
-    typeof checkOutRaw !== "string" ||
-    typeof numberOfGuestsRaw !== "string" ||
-    typeof nightlyPriceCentsRaw !== "string" ||
-    typeof cleaningFeeCentsRaw !== "string" ||
-    typeof discountCentsRaw !== "string"
+    requestId === null ||
+    requestId === "" ||
+    apartmentId === null ||
+    apartmentId === ""
   ) {
-    throw new Error("Invalid alternative offer form data");
+    return adminError("Please select an apartment.");
   }
-
-  const checkIn = new Date(checkInRaw);
-  if (Number.isNaN(checkIn.getTime())) {
-    throw new Error("Invalid check-in date");
-  }
-
-  const checkOut = new Date(checkOutRaw);
-  if (Number.isNaN(checkOut.getTime())) {
-    throw new Error("Invalid check-out date");
-  }
-
-  const numberOfGuests = Number(numberOfGuestsRaw);
-  const nightlyPriceCents = Number(nightlyPriceCentsRaw);
-  const cleaningFeeCents = Number(cleaningFeeCentsRaw);
-  const discountCents = Number(discountCentsRaw);
 
   if (
-    !Number.isFinite(numberOfGuests) ||
-    !Number.isFinite(nightlyPriceCents) ||
-    !Number.isFinite(cleaningFeeCents) ||
-    !Number.isFinite(discountCents)
+    typeof checkInRaw !== "string" ||
+    typeof checkOutRaw !== "string" ||
+    checkInRaw === "" ||
+    checkOutRaw === "" ||
+    Number.isNaN(new Date(checkInRaw).getTime()) ||
+    Number.isNaN(new Date(checkOutRaw).getTime())
   ) {
-    throw new Error("Invalid numeric alternative offer values");
+    return adminError("Please enter valid check-in and check-out dates.");
   }
 
-  await createAlternativeOffer({
-    requestId,
-    apartmentId,
-    checkIn,
-    checkOut,
-    numberOfGuests,
-    nightlyPriceCents,
-    cleaningFeeCents,
-    discountCents,
-    adminMessage: typeof adminMessageRaw === "string" ? adminMessageRaw : undefined,
-  });
+  if (
+    typeof numberOfGuestsRaw !== "string" ||
+    Number(numberOfGuestsRaw) < 1 ||
+    Number.isNaN(Number(numberOfGuestsRaw))
+  ) {
+    return adminError("Guest count must be at least 1.");
+  }
+
+  if (
+    typeof nightlyPriceCentsRaw !== "string" ||
+    Number.isNaN(Number(nightlyPriceCentsRaw))
+  ) {
+    return adminError("Please enter a valid nightly price.");
+  }
+
+  if (
+    typeof cleaningFeeCentsRaw !== "string" ||
+    Number.isNaN(Number(cleaningFeeCentsRaw))
+  ) {
+    return adminError("Please enter a valid cleaning fee.");
+  }
+
+  const discountCents = Number(discountCentsRaw ?? 0);
+
+  try {
+    await createAlternativeOffer({
+      requestId: String(requestId),
+      apartmentId: String(apartmentId),
+      checkIn: new Date(checkInRaw),
+      checkOut: new Date(checkOutRaw),
+      numberOfGuests: Number(numberOfGuestsRaw),
+      nightlyPriceCents: Number(nightlyPriceCentsRaw),
+      cleaningFeeCents: Number(cleaningFeeCentsRaw),
+      discountCents,
+      adminMessage: typeof adminMessageRaw === "string" ? adminMessageRaw : undefined,
+    });
+    return { status: "success" };
+  } catch (error) {
+    if (error instanceof OfferBusinessRuleError) {
+      const message =
+        BUSINESS_RULE_MESSAGES[error.code] ??
+        (error instanceof Error ? error.message : "We could not create the alternative offer. Please try again.");
+      return adminError(message);
+    }
+
+    if (error instanceof Error) {
+      console.error("createAlternativeOffer failed", error);
+    } else {
+      console.error("createAlternativeOffer failed with unknown error", error);
+    }
+
+    return adminError("We could not create the alternative offer. Please try again.");
+  }
 }

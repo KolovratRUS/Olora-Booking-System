@@ -84,7 +84,7 @@ export default async function AdminPage() {
                         </td>
                         <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-600">{request.numberOfGuests}</td>
                         <td className="whitespace-nowrap px-3 py-3 text-sm text-neutral-600">
-                          {format(request.createdAt, "yyyy-MM-dd")}
+                          {format(request.createdAt, "dd/MM/yyyy HH:mm")}
                         </td>
                       </tr>
                     ))}

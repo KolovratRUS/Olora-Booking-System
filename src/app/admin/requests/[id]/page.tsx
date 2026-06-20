@@ -1,6 +1,7 @@
 import { format } from "date-fns";
-import { getRequestDetail, declineRequestFormAction, cancelRequestFormAction, addAdminNoteFormAction, markAirbnbCheckedFormAction, markAirbnbBlockedFormAction, createAlternativeOfferFormAction, transitionToAwaitingPaymentFormAction, confirmPaymentFormAction } from "./actions";
+import { getRequestDetail, declineRequestFormAction, cancelRequestFormAction, addAdminNoteFormAction, markAirbnbCheckedFormAction, markAirbnbBlockedFormAction, transitionToAwaitingPaymentFormAction, confirmPaymentFormAction } from "./actions";
 import { canTransition, getVisibleActions } from "@/lib/services/bookingService";
+import { CreateAlternativeOfferForm } from "./alternative-offer-form";
 
 function statusBadge(_status: string) {
   return `inline-flex rounded-full bg-neutral-100 px-3 py-1 text-xs font-semibold text-neutral-800`;
@@ -50,8 +51,8 @@ export default async function AdminRequestDetailPage({
           <span className={statusBadge(request.status)}>{request.status}</span>
         </div>
         <p className="text-sm text-neutral-600">
-          Created {format(request.createdAt, "yyyy-MM-dd HH:mm")} • Updated{" "}
-          {format(request.updatedAt, "yyyy-MM-dd HH:mm")}
+          Created {format(request.createdAt, "dd/MM/yyyy HH:mm")} • Updated{" "}
+          {format(request.updatedAt, "dd/MM/yyyy HH:mm")}
         </p>
       </header>
 
@@ -159,7 +160,7 @@ export default async function AdminRequestDetailPage({
               <p className="text-sm text-neutral-700">
                 Total: {offer.totalCents} cents (discount: {offer.discountCents} cents)
               </p>
-              <p className="text-sm text-neutral-700">Expires: {format(offer.expiresAt, "yyyy-MM-dd HH:mm")}</p>
+              <p className="text-sm text-neutral-700">Expires: {format(offer.expiresAt, "dd/MM/yyyy HH:mm")}</p>
               <a
                 className="mt-2 inline-block text-sm text-blue-700 underline"
                 href={`${OFFER_DEV_PATH}/${offer.token}`}
@@ -224,102 +225,15 @@ export default async function AdminRequestDetailPage({
       </form>
 
       {visibleActions.some((action) => action.type === "alternative_offer") && (
-        <form action={createAlternativeOfferFormAction} className="rounded border bg-white/80 p-4 space-y-2">
-          <h2 className="text-lg font-semibold">Create alternative offer</h2>
-          <p className="text-sm text-neutral-600">Check Airbnb availability before sending an alternative offer.</p>
-          <input type="hidden" name="requestId" value={request.id} />
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <label className="block text-sm">
-              Apartment
-              <select
-                name="apartmentId"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue=""
-              >
-                <option value="" disabled>
-                  Select an apartment
-                </option>
-                {activeApartments.map((apartment) => (
-                  <option key={apartment.id} value={apartment.id}>
-                    {apartment.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block text-sm">
-              Check-in
-              <input
-                name="checkIn"
-                type="date"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={format(request.checkIn, "yyyy-MM-dd")}
-              />
-            </label>
-            <label className="block text-sm">
-              Check-out
-              <input
-                name="checkOut"
-                type="date"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={format(request.checkOut, "yyyy-MM-dd")}
-              />
-            </label>
-            <label className="block text-sm">
-              Guests
-              <input
-                name="numberOfGuests"
-                type="number"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={request.numberOfGuests}
-              />
-            </label>
-            <label className="block text-sm">
-              Nightly price (cents)
-              <input
-                name="nightlyPriceCents"
-                type="number"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={request.apartment.nightlyPriceCents}
-              />
-            </label>
-            <label className="block text-sm">
-              Cleaning fee (cents)
-              <input
-                name="cleaningFeeCents"
-                type="number"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={request.apartment.cleaningFeeCents}
-              />
-            </label>
-            <label className="block text-sm">
-              Discount (cents)
-              <input
-                name="discountCents"
-                type="number"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                defaultValue={0}
-              />
-            </label>
-            <label className="block text-sm">
-              Optional message
-              <textarea
-                name="adminMessage"
-                className="mt-1 w-full rounded border p-2 text-sm"
-                rows={3}
-              />
-            </label>
-          </div>
-          <button
-            type="submit"
-            disabled={!airbnbReady || !canTransition(request.status, "alternative_offered")}
-            className="rounded bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50"
-          >
-            Create alternative offer
-          </button>
-          {!airbnbReady && (
-            <p className="text-xs text-neutral-600">Complete Airbnb status first.</p>
-          )}
-        </form>
+        <CreateAlternativeOfferForm
+          requestId={request.id}
+          activeApartments={activeApartments}
+          defaultCheckIn={format(request.checkIn, "yyyy-MM-dd")}
+          defaultCheckOut={format(request.checkOut, "yyyy-MM-dd")}
+          defaultGuests={request.numberOfGuests}
+          defaultNightlyPriceCents={request.apartment.nightlyPriceCents}
+          defaultCleaningFeeCents={request.apartment.cleaningFeeCents}
+        />
       )}
 
       {visibleActions.some((action) => action.type === "decline") && (
@@ -413,7 +327,7 @@ export default async function AdminRequestDetailPage({
               </span>
               {entry.note && <span className="text-neutral-600">{entry.note}</span>}
               <span className="text-xs text-neutral-500">
-                {entry.changedBy ?? "system"} • {format(entry.changedAt, "yyyy-MM-dd HH:mm")}
+                {entry.changedBy ?? "system"} • {format(entry.changedAt, "dd/MM/yyyy HH:mm")}
               </span>
             </li>
           ))}
@@ -429,7 +343,7 @@ export default async function AdminRequestDetailPage({
           {(request.adminNotes as Array<{ id: string; note: string; createdAt: Date }>).map((note) => (
             <li key={note.id}>
               <p>{note.note}</p>
-              <p className="text-xs text-neutral-500">{format(note.createdAt, "yyyy-MM-dd HH:mm")}</p>
+              <p className="text-xs text-neutral-500">{format(note.createdAt, "dd/MM/yyyy HH:mm")}</p>
             </li>
           ))}
         </ul>

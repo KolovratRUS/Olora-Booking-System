@@ -6,11 +6,9 @@ import {
   calculatePrice,
   allowedTransitions,
   getVisibleActions,
-} from "../../lib/services/bookingService";
+} from "@/lib/services/bookingService";
 
 describe("status transitions contract", () => {
-  const validFromStatuses = Object.keys(allowedTransitions);
-
   it("allows transitions explicitly defined in allowed transitions", () => {
     for (const [fromStatus, toStatus] of Object.entries(allowedTransitions)) {
       for (const target of toStatus) {
@@ -41,55 +39,86 @@ describe("status transitions contract", () => {
   });
 
   it("does not allow finite-state machines to have non-empty final transitions", () => {
+    expect(allowedTransitions["confirmed"]).toEqual(["cancelled"]);
     expect(allowedTransitions["declined"]).toEqual([]);
     expect(allowedTransitions["expired"]).toEqual([]);
     expect(allowedTransitions["cancelled"]).toEqual([]);
+  });
+
+  it("preserves guest_countered transitions on BookingRequest", () => {
+    expect(canTransition("alternative_offered", "guest_countered")).toBe(true);
+    expect(canTransition("guest_countered", "alternative_offered")).toBe(true);
+    expect(canTransition("guest_countered", "guest_accepted")).toBe(true);
+    expect(canTransition("guest_countered", "declined")).toBe(true);
+    expect(canTransition("guest_countered", "expired")).toBe(true);
+    expect(canTransition("guest_countered", "cancelled")).toBe(true);
   });
 });
 
 describe("action visibility derived from allowed transitions", () => {
   it("shows move to awaiting_payment only when that transition is valid", () => {
     expect(getVisibleActions("pending_review")).toEqual(
-      expect.arrayContaining([{ type: "alternative_offer" }]),
+      expect.arrayContaining([{ type: "alternative_offer" }])
     );
     expect(getVisibleActions("pending_review")).not.toEqual(
-      expect.arrayContaining([{ type: "move_to_awaiting_payment" }]),
+      expect.arrayContaining([{ type: "move_to_awaiting_payment" }])
     );
     expect(getVisibleActions("guest_accepted")).toEqual(
-      expect.arrayContaining([{ type: "move_to_awaiting_payment" }]),
+      expect.arrayContaining([{ type: "move_to_awaiting_payment" }])
     );
   });
 
   it("shows confirm_payment only when confirmed is in allowed transitions", () => {
     expect(getVisibleActions("awaiting_payment")).toEqual(
-      expect.arrayContaining([{ type: "confirm_payment" }]),
+      expect.arrayContaining([{ type: "confirm_payment" }])
     );
     expect(getVisibleActions("guest_accepted")).not.toEqual(
-      expect.arrayContaining([{ type: "confirm_payment" }]),
+      expect.arrayContaining([{ type: "confirm_payment" }])
     );
   });
 
   it("shows alternative_offer only when alternative_offered is in allowed transitions", () => {
     expect(getVisibleActions("pending_review")).toEqual(
-      expect.arrayContaining([{ type: "alternative_offer" }]),
+      expect.arrayContaining([{ type: "alternative_offer" }])
     );
     expect(getVisibleActions("guest_accepted")).not.toEqual(
-      expect.arrayContaining([{ type: "alternative_offer" }]),
+      expect.arrayContaining([{ type: "alternative_offer" }])
     );
   });
 });
 
 describe("availability overlays and capacity enforcement", () => {
   it("detects overlaps inside a single range", () => {
-    expect(overlaps(new Date("2026-08-01"), new Date("2026-08-06"), new Date("2026-08-03"), new Date("2026-08-09"))).toBe(true);
+    expect(
+      overlaps(
+        new Date("2026-08-01"),
+        new Date("2026-08-06"),
+        new Date("2026-08-03"),
+        new Date("2026-08-09")
+      )
+    ).toBe(true);
   });
 
   it("treats checkout-exclusive boundaries as non-overlapping", () => {
-    expect(overlaps(new Date("2026-08-01"), new Date("2026-08-03"), new Date("2026-08-03"), new Date("2026-08-04"))).toBe(false);
+    expect(
+      overlaps(
+        new Date("2026-08-01"),
+        new Date("2026-08-03"),
+        new Date("2026-08-03"),
+        new Date("2026-08-04")
+      )
+    ).toBe(false);
   });
 
   it("treats checkin-exclusive boundaries as non-overlapping", () => {
-    expect(overlaps(new Date("2026-08-03"), new Date("2026-08-05"), new Date("2026-08-01"), new Date("2026-08-03"))).toBe(false);
+    expect(
+      overlaps(
+        new Date("2026-08-03"),
+        new Date("2026-08-05"),
+        new Date("2026-08-01"),
+        new Date("2026-08-03")
+      )
+    ).toBe(false);
   });
 
   it("allows capacity at the exact limit", () => {
