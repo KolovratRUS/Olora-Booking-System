@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BookingRequestStatus {
+  pending_review
+  alternative_offered
+  guest_countered
+  guest_accepted
+  awaiting_payment
+  confirmed
+  declined
+  expired
+  cancelled
+}
+
+enum AvailabilityBlockSource {
+  direct_request
+  active_offer
+  confirmed_booking
+  airbnb_import
+  admin_manual
+  maintenance
+}
+
+enum OfferStatus {
+  pending
+  accepted
+  declined
+  expired
+  cancelled
+}
+
+enum PaymentStatus {
+  pending
+  requires_action
+  succeeded
+  failed
+  cancelled
+  refunded
+}
+
+enum AirbnbSyncStatus {
+  not_checked
+  checked
+  blocked
+  reopened
+  retained
+}
+
+model Amenity {
+  id         String             @id @default(cuid())
+  name       String             @unique
+  icon       String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  apartments ApartmentAmenity[]
+
+  @@index([name])
+}
+
+model Apartment {
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  shortDescription   String              @db.Text
+  fullDescription    String              @db.Text
+  bedrooms           Int
+  beds               Int
+  bathrooms          Int
+  maximumGuests      Int
+  nightlyPriceCents  Int                 @default(0)
+  cleaningFeeCents   Int                 @default(0)
+  currency           String              @default("USD")
+  isActive           Boolean             @default(true)
+  imageUrl           String?
+  primaryImageUrl    String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  amenities          ApartmentAmenity[]
+  bookingRequests    BookingRequest[]
+  offers             BookingOffer[]
+  bookings           Booking[]
+  availabilityBlocks AvailabilityBlock[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+model ApartmentAmenity {
+  id          String    @id @default(cuid())
+  apartmentId String
+  amenityId   String
+  order       Int       @default(0)
+  apartment   Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  amenity     Amenity   @relation(fields: [amenityId], references: [id], onDelete: Cascade)
+
+  @@unique([apartmentId, amenityId])
+  @@index([apartmentId])
+  @@index([amenityId])
+}
+
+model Guest {
+  id              String           @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String           @unique
+  phoneNumber     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  bookingRequests BookingRequest[]
+  bookings        Booking[]
+
+  @@index([email])
+}
+
+model BookingRequest {
+  id               String               @id @default(cuid())
+  reference        String               @unique
+  apartmentId      String
+  guestId          String
+  checkIn          DateTime
+  checkOut         DateTime
+  numberOfGuests   Int
+  message          String?
+  status           BookingRequestStatus @default(pending_review)
+  airbnbSyncStatus AirbnbSyncStatus     @default(not_checked)
+  expiresAt        DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  apartment        Apartment            @relation(fields: [apartmentId], references: [id])
+  guest            Guest                @relation(fields: [guestId], references: [id])
+  offers           BookingOffer[]
+  bookingBooking   Booking?
+  history          StatusHistory[]
+  adminNotes       AdminNote[]
+
+  @@index([reference])
+  @@index([apartmentId])
+  @@index([guestId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model BookingOffer {
+  id                String          @id @default(cuid())
+  token             String          @unique
+  bookingRequestId  String          @unique
+  apartmentId       String
+  checkIn           DateTime
+  checkOut          DateTime
+  numberOfGuests    Int
+  nightlyPriceCents Int
+  cleaningFeeCents  Int
+  discountCents     Int             @default(0)
+  taxCents          Int             @default(0)
+  totalCents        Int
+  adminMessage      String?
+  status            OfferStatus     @default(pending)
+  expiresAt         DateTime
+  acceptedAt        DateTime?
+  declinedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  bookingRequest    BookingRequest  @relation(fields: [bookingRequestId], references: [id], onDelete: Cascade)
+  apartment         Apartment       @relation(fields: [apartmentId], references: [id])
+  booking           Booking?
+  history           StatusHistory[]
+
+  @@index([token])
+  @@index([bookingRequestId])
+  @@index([apartmentId])
+  @@index([expiresAt])
+  @@index([status])
+}
+
+model Booking {
+  id                String               @id @default(cuid())
+  bookingRequestId  String               @unique
+  offerId           String               @unique
+  apartmentId       String
+  guestId           String
+  checkIn           DateTime
+  checkOut          DateTime
+  numberOfGuests    Int
+  nightlyPriceCents Int
+  cleaningFeeCents  Int
+  discountCents     Int                  @default(0)
+  taxCents          Int                  @default(0)
+  totalCents        Int
+  status            BookingRequestStatus @default(awaiting_payment)
+  confirmedAt       DateTime?
+  cancelledAt       DateTime?
+  airbnbSyncStatus  AirbnbSyncStatus     @default(not_checked)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  bookingRequest    BookingRequest       @relation(fields: [bookingRequestId], references: [id])
+  offer             BookingOffer         @relation(fields: [offerId], references: [id])
+  apartment         Apartment            @relation(fields: [apartmentId], references: [id])
+  guest             Guest                @relation(fields: [guestId], references: [id])
+  payment           Payment?
+
+  @@index([status])
+  @@index([apartmentId])
+  @@index([guestId])
+  @@index([offerId])
+  @@index([airbnbSyncStatus])
+}
+
+model Payment {
+  id                String        @id @default(cuid())
+  bookingId         String        @unique
+  amountCents       Int
+  currency          String        @default("USD")
+  status            PaymentStatus @default(pending)
+  paymentMethod     String?
+  providerPaymentId String?       @unique
+  metadata          String?       @default("{}")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  booking           Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@index([providerPaymentId])
+}
+
+model AvailabilityBlock {
+  id          String                  @id @default(cuid())
+  apartmentId String
+  blockStart  DateTime
+  blockEnd    DateTime
+  source      AvailabilityBlockSource
+  refId       String?
+  note        String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  apartment   Apartment               @relation(fields: [apartmentId], references: [id])
+
+  @@unique([apartmentId, blockStart, blockEnd, source, refId])
+  @@index([apartmentId, blockStart, blockEnd])
+  @@index([source])
+  @@index([refId])
+}
+
+model StatusHistory {
+  id               String          @id @default(cuid())
+  entityType       String
+  entityId         String
+  fromStatus       String?
+  toStatus         String
+  note             String?
+  changedAt        DateTime        @default(now())
+  changedBy        String?         @default("system")
+  bookingRequest   BookingRequest? @relation(fields: [bookingRequestId], references: [id])
+  bookingRequestId String?
+  bookingOffer     BookingOffer?   @relation(fields: [bookingOfferId], references: [id])
+  bookingOfferId   String?
+
+  @@index([entityType, entityId])
+  @@index([changedAt])
+}
+
+model AdminNote {
+  id               String         @id @default(cuid())
+  bookingRequestId String
+  note             String         @db.Text
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  bookingRequest   BookingRequest @relation(fields: [bookingRequestId], references: [id], onDelete: Cascade)
+
+  @@index([bookingRequestId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  actor      String?
+  action     String
+  details    String?  @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([action])
+}
