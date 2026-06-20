@@ -1,6 +1,7 @@
 import { BookingRequestStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { canTransition } from "@/lib/services/bookingService";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,7 @@ async function approveRequest(requestId: string, note: string) {
   if (!request) {
     return;
   }
-  if (!bookingService.canTransition(request.status, "guest_accepted")) {
+  if (!canTransition(request.status, "guest_accepted")) {
     console.error("Disallowed transition", { requestId, from: request.status, to: "guest_accepted" });
     return;
   }
@@ -51,7 +52,7 @@ async function declineRequest(requestId: string, note: string) {
   if (!request) {
     return;
   }
-  if (!bookingService.canTransition(request.status, "declined")) {
+  if (!canTransition(request.status, "declined")) {
     console.error("Disallowed transition", { requestId, from: request.status, to: "declined" });
     return;
   }
@@ -81,7 +82,7 @@ async function offerAlternative(requestId: string, note: string) {
   if (!request) {
     return;
   }
-  if (!bookingService.canTransition(request.status, "alternative_offered")) {
+  if (!canTransition(request.status, "alternative_offered")) {
     console.error("Disallowed transition", { requestId, from: request.status, to: "alternative_offered" });
     return;
   }
@@ -135,8 +136,8 @@ type Request = {
   id: string;
   reference: string;
   status: BookingRequestStatus;
-  checkIn: string;
-  checkOut: string;
+  checkIn: Date;
+  checkOut: Date;
   numberOfGuests: number;
   apartment: { name: string };
   guest: { firstName: string; lastName: string; email?: string };
@@ -154,10 +155,10 @@ function PendingRequestQueue({ requests, action }: { requests: Request[]; action
             <div className="flex flex-col gap-1">
               <span className="text-sm font-semibold text-neutral-900">{request.apartment.name}</span>
               <span className="text-sm text-neutral-600">
-                {request.guest.firstName} {request.guest.lastName} • {request.guest.email ?? ""}
+                {request.guest.firstName} {request.guest.lastName} •{request.guest.email ?? ""}
               </span>
               <span className="text-xs text-neutral-500">
-                {request.checkIn} → {request.checkOut} • {request.numberOfGuests} guest(s)
+                {request.checkIn.toISOString().slice(0, 10)} → {request.checkOut.toISOString().slice(0, 10)} • {request.numberOfGuests} guest(s)
               </span>
               <span className="text-xs text-neutral-500">{request.reference}</span>
             </div>
@@ -207,7 +208,7 @@ function AcceptedRequestQueue({ requests, action }: { requests: Request[]; actio
             <div className="flex flex-col gap-1">
               <span className="text-sm font-semibold text-neutral-900">{request.apartment.name}</span>
               <span className="text-xs text-neutral-500">
-                {request.checkIn} → {request.checkOut} • {request.numberOfGuests} guest(s)
+                {request.checkIn.toISOString().slice(0, 10)} → {request.checkOut.toISOString().slice(0, 10)} • {request.numberOfGuests} guest(s)
               </span>
               <span className="text-xs text-neutral-500">{request.reference}</span>
             </div>
