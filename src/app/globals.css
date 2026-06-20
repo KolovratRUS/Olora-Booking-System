@@ -1,8 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --olora-bg: #fafaf9;
+  --olora-surface: #ffffff;
+  --olora-text: #18181b;
+  --olora-muted: #71717a;
+  --olora-border: #e4e4e7;
+  --olora-accent: #111827;
+  --olora-accent-hover: #272727;
+}
+
+:root,
+.apartment-experience,
+html.apartment-experience,
+:root.apartment-experience {
+  --olora-bg: #ffffff;
+  --olora-surface: #f7f7f7;
+  --olora-text: #222222;
+  --olora-muted: #6a6a6a;
+  --olora-border: #dddddd;
+  --olora-accent: #c57d7d;
+  --olora-accent-hover: #a86363;
 }
 
 @theme inline {
@@ -14,13 +32,65 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --olora-bg: #0f0f10;
+    --olora-surface: #1c1c1f;
+    --olora-text: #f4f4f5;
+    --olora-muted: #a1a1aa;
+    --olora-border: #3f3f46;
+    --olora-accent: #fafafa;
+    --olora-accent-hover: #d4d4d8;
+  }
+
+  :root:not(.apartment-experience),
+  .apartment-experience:not([data-force-dark]) {
+    --olora-bg: #ffffff;
+    --olora-surface: #f7f7f7;
+    --olora-text: #222222;
+    --olora-muted: #6a6a6a;
+    --olora-border: #dddddd;
+    --olora-accent: #c57d7d;
+    --olora-accent-hover: #a86363;
   }
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:has(.apartment-experience) {
+    --olora-bg: #ffffff;
+    --olora-surface: #f7f7f7;
+    --olora-text: #222222;
+    --olora-muted: #6a6a6a;
+    --olora-border: #dddddd;
+    --olora-accent: #c57d7d;
+    --olora-accent-hover: #a86363;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--olora-bg);
+  color: var(--olora-text);
+  font-family: var(--font-geist-sans, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
+  line-height: 1.55;
+}
+
+::selection {
+  background: var(--olora-accent);
+  color: var(--olora-bg);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
 }
