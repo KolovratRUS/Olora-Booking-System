@@ -5,10 +5,12 @@ export const dynamic = "force-dynamic";
 export default async function RequestDetailPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
+  const { id } = await params;
+
   const request = await prisma.bookingRequest.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       guest: true,
       apartment: true,

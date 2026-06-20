@@ -2,10 +2,20 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-export default async function RequestStatusPage({ params }: { params: { id: string } }) {
+export default async function RequestStatusPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
   const request = await prisma.bookingRequest.findUnique({
-    where: { id: params.id },
-    include: { guest: true, apartment: true, offers: true },
+    where: { id },
+    include: {
+      guest: true,
+      apartment: true,
+      offers: true,
+    },
   });
 
   if (!request) {
@@ -18,12 +28,22 @@ export default async function RequestStatusPage({ params }: { params: { id: stri
 
   return (
     <main className="mx-auto max-w-5xl space-y-4 p-6">
-      <h1 className="text-3xl font-semibold">Request {request.reference}</h1>
+      <h1 className="text-3xl font-semibold">
+        Request {request.reference}
+      </h1>
+
       <p className="text-sm font-semibold">
         {request.guest.firstName} {request.guest.lastName}
       </p>
+
       <p className="text-xs text-neutral-600">
-        {request.apartment.name} • {request.checkIn.toISOString().slice(0, 10)} - {request.checkOut.toISOString().slice(0, 10)}
+        {request.apartment.name} •{" "}
+        {request.checkIn.toISOString().slice(0, 10)} –{" "}
+        {request.checkOut.toISOString().slice(0, 10)}
+      </p>
+
+      <p className="text-sm text-neutral-500">
+        Status: {request.status}
       </p>
     </main>
   );
